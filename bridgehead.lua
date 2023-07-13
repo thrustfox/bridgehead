@@ -34,13 +34,14 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 AppInfo = {
   appName = 'bridgehead',
   ver = '1.00.000',
-  verDate = '23/04/02',
+  verDate = '23/04/20',
   authorName = 'thrustfox',
   logHeader = 'BRIDGEHEAD_LOG'
 }
 
 FixedOption = {
   --useStepLimit, useLunchBox, useSmoke, curDifficulty, langCd
+  langCd = 'kr'
 }
 
 myLog = mist.Logger:new(AppInfo.logHeader)
@@ -3600,7 +3601,9 @@ function processSupport()
   chain(respawnInfo)
     .each(function (info)
         evtBroadcast('RESPAWN_SUP ' .. info[1])
-        Util.broadcastBy(Msg.getText('msg_squadron_ready'), Role.Support, info[7])
+        if info[3] ~= true then -- if not awacs
+          Util.broadcastBy(Msg.getText('msg_squadron_ready'), Role.Support, info[7])
+        end
         
         spawnSupportByProto(info[1], info[2], info[3], info[4], info[5], info[6], info[7], info[8])
     end)
@@ -3679,7 +3682,9 @@ function checkSupportDestroyed(groupName, unitName, isLanding)
                 support.isAlive = false
               end
               bHappened = true
-              Util.broadcastBy(support.displayName .. Msg.getText('msg_squadron_lost'), Role.Operator)
+              if support.isAwacs ~= true then
+                Util.broadcastBy(support.displayName .. Msg.getText('msg_squadron_lost'), Role.Operator)
+              end
             else
               Util.notifySP('msg_squadron_member_lost', support.initialIndex)
             end

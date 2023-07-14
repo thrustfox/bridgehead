@@ -41,6 +41,7 @@ Msg = {
   defaultAudio = nil,
   lastTime = 0,
   ignoreTimePeriod = 2,
+  syncAudio = nil,
 
   init = function (logObj, data)
     Msg.data = data
@@ -62,22 +63,41 @@ Msg = {
   setDefaultAudio = function (value)
     Msg.defaultAudio = value
   end,
-  getText = function (msgId)
+  setSyncAudio = function (value)
+    Msg.syncAudio = value
+  end,
+  getText = function (msgId, retExtra)
     local curDb = Msg.getCurDb()
     if curDb ~= nil then
       local msgRow = curDb[msgId]
       if msgRow ~= nil and msgRow.text ~= nil then
-        return Msg.rollFn(msgRow.text)
+        local info = Msg.rollFn(msgRow.text, true)
+        if retExtra == true then
+          return info
+        else
+          return info[1]
+        end
       end
     end
-    return msgId
+    if retExtra == true then
+      return {msgId, 1}
+    else
+      return msgId
+    end
   end,
-  getAudio = function (msgId)
+  getAudio = function (msgId, selIndex)
     local curDb = Msg.getCurDb()
     if curDb ~= nil then
       local msgRow = curDb[msgId]
       if msgRow ~= nil and msgRow.audio ~= nil then
-        return Msg.audioPrefix .. Msg.rollFn(msgRow.audio)
+        local audio
+        if Msg.syncAudio == true then
+          audio = msgRow.audio[selIndex]
+        else
+          audio = Msg.rollFn(msgRow.audio)
+        end
+        audio = audio or ''
+        return Msg.audioPrefix .. audio
       end
     end
     return nil
@@ -124,15 +144,18 @@ Msg = {
     local audioOnly = opt.audioOnly
     local prefix = opt.prefix
     local text = nil
+    local selIndex = 1
     if altText ~= nil then
       text = altText
     else
-      text = Msg.getText(msgId)
+      local info = Msg.getText(msgId, true)
+      text = info[1]
+      selIndex = info[2]
     end
     if prefix ~= nil then
       text = prefix .. text
     end
-    local audio = Msg.getAudio(msgId)
+    local audio = Msg.getAudio(msgId, selIndex)
     
     if text ~= nil and audioOnly ~= true then
       if groupId ~= nil then

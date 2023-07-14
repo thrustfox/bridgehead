@@ -33,15 +33,15 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 AppInfo = {
   appName = 'bridgehead',
-  ver = '1.00.000',
-  verDate = '23/04/20',
+  ver = '1.01.002',
+  verDate = '23/05/26',
   authorName = 'thrustfox',
   logHeader = 'BRIDGEHEAD_LOG'
 }
 
 FixedOption = {
-  --useStepLimit, useLunchBox, useSmoke, curDifficulty, langCd
-  langCd = 'kr'
+  --useStepLimit, useLunchBox, useSmoke, curDifficulty, langCd, voiceSupport
+  langCd = 'kr',
 }
 
 myLog = mist.Logger:new(AppInfo.logHeader)
@@ -117,7 +117,7 @@ TestFeature = {
 myDebug('--- script loading start')
 
 PreConst = {
-  aerialWaitingRoe = 'hold', -- hold여야 roeEmer 동작
+  aerialWaitingRoe = 'hold', -- should be hold for roeEmer to work
 }
 
 Const = {
@@ -199,7 +199,6 @@ Const = {
   zoneGroundD = 'GROUND-D',
   periodReroute = 5,
   distReroute = 11.1,
-  spawnHeightAerial = 3000,
   distRoeEmer = 25,
   checkTerrainRadius = 15, -- meter
   spawnRadiusSub = 35, -- meter
@@ -247,6 +246,7 @@ Const = {
   broadcastShort = 15,
   broadcastLong = 30,
   wpAltitude = 4500, -- meter
+  wpAltitudeLow = 900,
   wpAltitudeAwacs = 9000,
   wpSpeed = 180,  -- "m/s"
   wpSpeedAwacs = 128,
@@ -261,6 +261,7 @@ Const = {
   useRestartMenu = true,
   useOperatorNameAlt = true,
   axisCntSuccessMax = 2,
+  voiceSupportLang = { 'kr' },
   
   --constend
 }
@@ -297,7 +298,7 @@ ConfigSet = {
       rollAlertBasis = ({8, 18})[1],
       rollAlertDisperse = 4,
       rollAlertMultitude = 1,
-      axisBias = 45,
+      axisBias = ({45, 315})[1],
       minDistPath = ({2.5, 2.5})[2],
       maxDistPath = ({3.5, 2.8})[2],
       minDistEntry = ({2.0, 2.1})[2],
@@ -334,6 +335,7 @@ ConfigSet = {
       },
       unknownCardName = 'Unknown',
       periodRestart = 20,
+      wpSpeedGround = 60,
     }
   }
 }
@@ -394,6 +396,7 @@ postConfig = {
   useSmoke = true,
   curDifficulty = 'normal',
   langCd = 'en',
+  voiceSupport = false,
   
   useHardMode = false,
   axisCntSuccess = 1,
@@ -449,12 +452,6 @@ Config = {
         name = 'English',
         langCd = 'en',
       },
-      {
-        name = 'Korean',
-        langCd = 'kr',
-      },
-    },
-    [1] = {
       {
         name = 'Korean',
         langCd = 'kr',
@@ -2218,6 +2215,7 @@ Util = {
       CHANGE_OPT_LUNCHBOX    = Msg.getText('msg_opt_lunchbox'),  
       CHANGE_OPT_SMOKE       = Msg.getText('msg_opt_smoke'),     
       CHANGE_OPT_LANG        = Msg.getText('msg_opt_lang'),      
+      CHANGE_OPT_VOICE       = Msg.getText('msg_opt_voice_support'),      
     }
     local title = cmdIdToMsg[cmdId] or ''
     if cmdId == 'CHANGE_OPT_EXTENDED' then
@@ -2230,6 +2228,8 @@ Util = {
       title = title .. separator .. Util.difficultyStr(postConfig.curDifficulty)
     elseif cmdId == 'CHANGE_OPT_LANG' then
       title = title .. separator .. Util.getLangName(postConfig.langCd)
+    elseif cmdId == 'CHANGE_OPT_VOICE' then
+      title = title .. separator .. Util.yesNoStr(postConfig.voiceSupport)
     end
     return title
   end,
@@ -2469,7 +2469,7 @@ function doRoll(roll, desc)
   end
 end
 
-function getByRoll(selections)
+function getByRoll(selections, retExtra)
   local fnName = 'getByRoll'
 -- 1) no table
 -- 2) table of table (has roll = 0)
@@ -2477,7 +2477,11 @@ function getByRoll(selections)
 
   -- 1)
   if type(selections) ~= 'table' then
-    return selections
+    if retExtra == true then
+      return { selections, 1 }
+    else
+      return selections
+    end
   end
 
   -- 2)
@@ -2497,14 +2501,14 @@ function getByRoll(selections)
 
   if rollParam ~= nil then
     return let({
-        reduce(slice(selections, 1), { selection = nil }, function (res, cur)
+        reduce(slice(selections, 1), { selection = nil, selIndex = -1 }, function (res, cur, i)
                  return let({
                      cur.roll,
                      cur.payload
                  }, function (roll, payload)
                      if res.selection == nil and roll ~= nil and payload ~= nil then
                        if doRoll(roll) then
-                         return { selection = cur }
+                         return { selection = cur, selIndex = i + 1 }
                        end
                      end
                      return res
@@ -2513,16 +2517,29 @@ function getByRoll(selections)
     }, function (res)
         return branch({}, res.selection == nil,
           function ()
-            return selections[1].payload
+            if retExtra == true then
+              return { selections[1].payload, 1}
+            else
+              return selections[1].payload
+            end
           end,
           function ()
-            return res.selection.payload
+            if retExtra == true then
+              return { res.selection.payload, res.selIndex }
+            else
+              return res.selection.payload
+            end
         end).value()
     end).value()
   else
     -- 3)
     if #selections > 0 then
-      return selections[mist.random(#selections)]
+      local selIndex = mist.random(#selections)
+      if retExtra == true then
+        return { selections[selIndex], selIndex }
+      else
+        return selections[selIndex]
+      end
     end
   end
   
@@ -2810,7 +2827,7 @@ function dispatchByWp(eleIndex, wp, axisIndex, isFriendly)
           end
           ele.roeState = 'hold'
           ele.dispatchAxis = axisIndex
-          setRouteAerial(ele.name, ele, {isFriendly = isFriendly, isHeli = ele.isHeli, isAwacs = ele.isAwacs})
+          setRouteAerial(ele.name, ele, {isFriendly = isFriendly, isHeli = ele.isHeli, isAwacs = ele.isAwacs, isDuck = (ele.patrolState == '')})
         end
     end)
 end
@@ -2839,7 +2856,7 @@ function returnFromDispatch(eleIndex, isFriendly)
         ele.roeState = 'hold'
         ele.patrolState = ''
         Util.setRoeFromRoe(ele)
-        setRouteAerial(ele.name, ele, {isFriendly = isFriendly, isHeli = ele.isHeli, isAwacs = ele.isAwacs})
+        setRouteAerial(ele.name, ele, {isFriendly = isFriendly, isHeli = ele.isHeli, isAwacs = ele.isAwacs, isDuck = (ele.patrolState == '')})
     end)
 
 end
@@ -2878,7 +2895,13 @@ function spawnSupportByProto(protoName, zoneName, isAwacs, displayName, isHeli, 
   
   local pos = generateWpAroundZone(zoneName)
   local spawnPos = mist.utils.makeVec3(pos[1])
-  spawnPos.y = land.getHeight({x = spawnPos.x, y = spawnPos.z}) + Const.spawnHeightAerial
+  local spawnAlt
+  if isAwacs == true then
+    spawnAlt = Const.wpAltitudeAwacs
+  else
+    spawnAlt = Const.wpAltitudeLow
+  end
+  spawnPos.y = land.getHeight({x = spawnPos.x, y = spawnPos.z}) + spawnAlt
   local action = 'clone'
   if isAwacs == true then
     action = 'respawn'
@@ -2927,7 +2950,7 @@ function spawnSupportByProto(protoName, zoneName, isAwacs, displayName, isHeli, 
       Util.setInvisible(support.name, true)
     end
 
-    setRouteAerial(groupName, support, {isFriendly = true, isHeli = isHeli, isAwacs = isAwacs})
+    setRouteAerial(groupName, support, {isFriendly = true, isHeli = isHeli, isAwacs = isAwacs, isDuck = true})
   end)
 end
 
@@ -2943,7 +2966,7 @@ function spawnPatrolByProto(protoName, zoneName, isHeli, initialIndex)
   
   local pos = generateWpAroundZone(zoneName)
   local spawnPos = mist.utils.makeVec3(pos[1])
-  spawnPos.y = land.getHeight({x = spawnPos.x, y = spawnPos.z}) + Const.spawnHeightAerial
+  spawnPos.y = land.getHeight({x = spawnPos.x, y = spawnPos.z}) + Const.wpAltitudeLow
   local group = mist.teleportToPoint({groupName = protoName, point = spawnPos, action = 'clone'})
   rigid({ group }).stage(fnName, 'group nil', function (group)
     local groupName = group['name']
@@ -2974,7 +2997,7 @@ function spawnPatrolByProto(protoName, zoneName, isHeli, initialIndex)
       }
     )
     Util.setRoeByGroup(patrol.name, patrol.roeState, true, true)
-    setRouteAerial(groupName, patrol, {isHeli = isHeli})
+    setRouteAerial(groupName, patrol, {isHeli = isHeli, isDuck = true})
   end)
 end
 
@@ -3063,6 +3086,7 @@ function moveAerialGroupByName(groupName, wp, opt)
   local isFriendly = opt.isFriendly
   local isHeli = opt.isHeli
   local isAwacs = opt.isAwacs
+  local isDuck = opt.isDuck -- use wpAltitudeLow
   
   local groundZoneName = Const.zoneGroundD
   if isFriendly == true then
@@ -3071,8 +3095,13 @@ function moveAerialGroupByName(groupName, wp, opt)
   
   rigid({ Group.getByName(groupName) }).stage(fnName, 'group nil', function (group)
 
-    local altitude = Const.wpAltitude
     local speed = Const.wpSpeed
+    local altitude
+    if isDuck == true then
+      altitude = Const.wpAltitudeLow
+    else
+      altitude = Const.wpAltitude
+    end
     if isAwacs == true then
       altitude = Const.wpAltitudeAwacs
       speed = Const.wpSpeedAwacs
@@ -3107,11 +3136,10 @@ function moveGroundGroupByName(groupName, position)
   local fnName = 'moveGroundGroupByName'
 
   rigid({ Group.getByName(groupName) }).stage(fnName, 'group nil', function (group)
-    local curPos = group:getUnit(1):getPosition().p
     
     local path = {}
-    path[#path + 1] = mist.ground.buildWP(position, 'Diamond', 5)
-    path[#path + 1] = mist.ground.buildWP(position, 'Diamond', 5)
+    path[#path + 1] = mist.ground.buildWP(position, 'Diamond', myConfig.const.wpSpeedGround)
+    path[#path + 1] = mist.ground.buildWP(position, 'Diamond', myConfig.const.wpSpeedGround)
     if TestFeature.groundDestSmoke then
       makeSmoke(position, trigger.smokeColor.Orange)
     end
@@ -3683,7 +3711,7 @@ function checkSupportDestroyed(groupName, unitName, isLanding)
               end
               bHappened = true
               if support.isAwacs ~= true then
-                Util.broadcastBy(support.displayName .. Msg.getText('msg_squadron_lost'), Role.Operator)
+                Util.notifyOP('msg_squadron_lost', { altText = support.displayName .. Msg.getText('msg_squadron_lost') })
               end
             else
               Util.notifySP('msg_squadron_member_lost', support.initialIndex)
@@ -4040,19 +4068,22 @@ local function onUserCommand(args)
   if cmdId == 'CHANGE_OPT_EXTENDED' then
     postConfig.useStepLimit = not postConfig.useStepLimit
     text = Msg.getText('msg_option_changed')
-    Util.broadcastDefS(text .. ' [ ' .. Util.getOptionTitle(cmdId, ' -> ') .. ' ]')
+    Util.broadcast(text .. ' [ ' .. Util.getOptionTitle(cmdId, ' -> ') .. ' ]')
+    Msg.notifyC('msg_option_changed', { audioOnly = true })
     buildMenuInit()
     
   elseif cmdId == 'CHANGE_OPT_LUNCHBOX' then
     postConfig.useLunchBox = not postConfig.useLunchBox
     text = Msg.getText('msg_option_changed')
-    Util.broadcastDefS(text .. ' [ ' .. Util.getOptionTitle(cmdId, ' -> ') .. ' ]')
+    Util.broadcast(text .. ' [ ' .. Util.getOptionTitle(cmdId, ' -> ') .. ' ]')
+    Msg.notifyC('msg_option_changed', { audioOnly = true })
     buildMenuInit()
     
   elseif cmdId == 'CHANGE_OPT_SMOKE' then
     postConfig.useSmoke = not postConfig.useSmoke
     text = Msg.getText('msg_option_changed')
-    Util.broadcastDefS(text .. ' [ ' .. Util.getOptionTitle(cmdId, ' -> ') .. ' ]')
+    Util.broadcast(text .. ' [ ' .. Util.getOptionTitle(cmdId, ' -> ') .. ' ]')
+    Msg.notifyC('msg_option_changed', { audioOnly = true })
     buildMenuInit()
     
   elseif cmdId == 'CHANGE_OPT_DIFFICULTY' then
@@ -4064,15 +4095,29 @@ local function onUserCommand(args)
       postConfig.curDifficulty = 'normal'
     end
     text = Msg.getText('msg_option_changed')
-    Util.broadcastDefS(text .. ' [ ' .. Util.getOptionTitle(cmdId, ' -> ') .. ' ]')
+    Util.broadcast(text .. ' [ ' .. Util.getOptionTitle(cmdId, ' -> ') .. ' ]')
+    Msg.notifyC('msg_option_changed', { audioOnly = true })
     buildMenuInit()
     
   elseif cmdId == 'CHANGE_OPT_LANG' then
     postConfig.langCd = lc_args
     Msg.setLangCd(postConfig.langCd)
+    if FixedOption.voiceSupport == nil then
+      if not contains(Const.voiceSupportLang, postConfig.langCd) then
+        postConfig.voiceSupport = false
+      end
+    end
     buildMenuInit()
     text = Msg.getText('msg_option_changed')
-    Util.broadcastDefS(text .. ' [ ' .. Util.getOptionTitle(cmdId, ' -> ') .. ' ]')
+    Util.broadcast(text .. ' [ ' .. Util.getOptionTitle(cmdId, ' -> ') .. ' ]')
+    Msg.notifyC('msg_option_changed', { audioOnly = true })
+
+  elseif cmdId == 'CHANGE_OPT_VOICE' then
+    postConfig.voiceSupport = not postConfig.voiceSupport
+    text = Msg.getText('msg_option_changed')
+    Util.broadcast(text .. ' [ ' .. Util.getOptionTitle(cmdId, ' -> ') .. ' ]')
+    Msg.notifyC('msg_option_changed', { audioOnly = true })
+    buildMenuInit()
     
   elseif cmdId == 'RESTART_OPERATION' then
     if lc_args.value == true then
@@ -4526,7 +4571,7 @@ function checkArrivalPatrol(isFriendly, fnName)
                          if patrol.wpIndex > #patrol.wp then
                            patrol.wpIndex = 1
                          end
-                         setRouteAerial(patrol.name, patrol, {isFriendly = isFriendly, isHeli=patrol.isHeli, isAwacs=patrol.isAwacs})
+                         setRouteAerial(patrol.name, patrol, {isFriendly = isFriendly, isHeli=patrol.isHeli, isAwacs=patrol.isAwacs, isDuck = (patrol.patrolState == '')})
                        end
                        if some(positions, function (curPos)
                          return mist.utils.NMToMeters(Const.distReroute) <
@@ -4539,7 +4584,7 @@ function checkArrivalPatrol(isFriendly, fnName)
                            if TestFeature.debugReroute then
                              Util.broadcast('re-routing - ' .. patrol.protoName)
                            end
-                           setRouteAerial(patrol.name, patrol, {isFriendly = isFriendly, isHeli=patrol.isHeli, isAwacs=patrol.isAwacs})
+                           setRouteAerial(patrol.name, patrol, {isFriendly = isFriendly, isHeli=patrol.isHeli, isAwacs=patrol.isAwacs, isDuck = (patrol.patrolState == '')})
                          else
                            patrol.rerouteCnt = patrol.rerouteCnt - Const.minPPS
                          end
@@ -4811,8 +4856,9 @@ function preInit()
   Msg.init(myLog, MsgData.messages)
   Msg.setLangCd(postConfig.langCd)
   Msg.setDefaultAudio('beep.wav')
-  --Msg.setForceDefaultAudio(true)
+  Msg.setForceDefaultAudio(true)
   Msg.setRollFn(getByRoll)
+  Msg.setSyncAudio(true)
   
   getConfig(myConfig, myConfigSet)
 
@@ -4891,11 +4937,21 @@ function buildMenuInit()
       commandDb[#commandDb + 1] = { cmd = missionCommands.addCommand(title, nil, onUserCommand, { id = cmdId }) }
 
   end)
-  if FixedOption.langCd ~= nil then return end
-  if #myConfig.langSupports > 1 then
-    local title = Util.getOptionTitle('CHANGE_OPT_LANG', ': ')
-    commandDb[#commandDb + 1] = { cmd = missionCommands.addSubMenu(title) }
-    appendSubMenuLang(commandDb[#commandDb].cmd)
+
+  if FixedOption.voiceSupport == nil then
+    if contains(Const.voiceSupportLang, postConfig.langCd) then
+      local title = Util.getOptionTitle('CHANGE_OPT_VOICE', ': ')
+      local cmdId = 'CHANGE_OPT_VOICE'
+      commandDb[#commandDb + 1] = { cmd = missionCommands.addCommand(title, nil, onUserCommand, { id = cmdId }) }
+    end
+  end
+
+  if FixedOption.langCd == nil then
+    if #myConfig.langSupports > 1 then
+      local title = Util.getOptionTitle('CHANGE_OPT_LANG', ': ')
+      commandDb[#commandDb + 1] = { cmd = missionCommands.addSubMenu(title) }
+      appendSubMenuLang(commandDb[#commandDb].cmd)
+    end
   end
 
 end
@@ -5249,6 +5305,10 @@ function postInit()
   
   getConfigPost(myConfig)
   setConfigFromDifficulty()
+  if postConfig.voiceSupport == true and contains(Const.voiceSupportLang, postConfig.langCd) then
+    Msg.setForceDefaultAudio(false)
+  else
+  end
 
   Util.generateAwacsName()
   Util.notifyOP('msg_start_operation')

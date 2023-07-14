@@ -31,6 +31,10 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ]]
 
+MrInfo = {
+  ver = '1.00.000'
+}
+
 function map(list, func, chained)
   local mapped = {}
   for i=1,#list do

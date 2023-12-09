@@ -50,12 +50,13 @@ Msg = {
   end,
   getCurDb = function ()
     if Msg.data ~= nil then
-      return Msg.data[Msg.langCd] or {}
+      return Msg.data[Msg.langCd].content or {}
     end
     return {}
   end,
   setLangCd = function (langCd)
     Msg.langCd = langCd
+    Msg.setSyncAudio(Msg.data[Msg.langCd].syncAudio)
   end,
   setForceDefaultAudio = function (value)
     Msg.forceDefaultAudio = value

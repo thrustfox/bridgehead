@@ -33,15 +33,15 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 AppInfo = {
   appName = 'bridgehead',
-  ver = '1.01.002',
-  verDate = '23/05/26',
+  ver = '1.02.001',
+  verDate = '23/12/06',
   authorName = 'thrustfox',
   logHeader = 'BRIDGEHEAD_LOG'
 }
 
 FixedOption = {
   --useStepLimit, useLunchBox, useSmoke, curDifficulty, langCd, voiceSupport
-  langCd = 'kr',
+  --langCd = 'kr',
 }
 
 myLog = mist.Logger:new(AppInfo.logHeader)
@@ -112,6 +112,7 @@ TestFeature = {
   useDetectClient = false,
   broadcastT = false,
   useTestCard = false,
+  useClientTest = false,
 }
 
 myDebug('--- script loading start')
@@ -241,7 +242,8 @@ Const = {
   rollAlertMin = 1,
   rollAlertMax = 20,
   useRollProportional = true,
-  isSym = ({':', ','})[2],
+  isSymRadio = ({': ', ', '})[1],
+  isSym = ': ',
   separatorSym = ', ',
   broadcastShort = 15,
   broadcastLong = 30,
@@ -262,6 +264,7 @@ Const = {
   useOperatorNameAlt = true,
   axisCntSuccessMax = 2,
   voiceSupportLang = { 'kr' },
+  krGroup = { 'kr' },
   
   --constend
 }
@@ -325,7 +328,8 @@ ConfigSet = {
         ['SCOUT_A'] = 'msg_type_scout',
         ['SAM_A'] = 'msg_type_sam',
       },
-      cardNumMax = 3,
+      cardNumMax = 6,
+      cardDeckSize = 3,
       cardRange = 10,
       cardShapes = {
         'Axeman',
@@ -386,6 +390,7 @@ general = {
   vote = {},
   restartCnt = 0,
   awacsName = '',
+  isDeckComplete = false,
   
   --generalend
 }
@@ -1796,7 +1801,7 @@ Util = {
     if (group) then
       local units = group:getUnits()
       if #units >= unitIndex then
-        return group:getUnit(unitIndex):getPosition().p
+        return group:getUnit(unitIndex):getPosition().p --pos3
       end
     end
     return nil
@@ -2043,8 +2048,8 @@ Util = {
 
   wrapNarrator = function (narrator)
     narrator = narrator or ''
-    return narrator .. Const.isSym .. ' '
-    --return '[' .. narrator .. ']' .. Const.isSym .. ' '
+    return narrator .. Const.isSymRadio
+    --return '[' .. narrator .. ']' .. Const.isSymRadio
   end,
 
   isNumber = function (ch)
@@ -2153,8 +2158,8 @@ Util = {
     ).value()
   end,
 
-  isDeckComplete = function ()
-    return #general.cardPicked == myConfig.const.cardNumMax
+  checkDeckComplete = function ()
+    return #general.cardPicked == myConfig.const.cardDeckSize
   end,
 
   getTrueVotes = function ()
@@ -2162,7 +2167,7 @@ Util = {
   end,
 
   getClientIds = function ()
-    -- return active client groud id and name pair
+    -- return active client groud id and name pair. { id = clientId, groupName = groupName }
     local res = chain(myConfig.clients)
       .filter(function (client)
           return let({
@@ -2183,7 +2188,14 @@ Util = {
               }
           end).value()
       end).value()
-
+    
+    if (TestFeature.useClientTest == true) then
+      res[#res+1] = {
+        id = 'dummydummydummy',
+        groupName = 'g_dummydummydummy',
+      }
+    end
+    
     return res
   end,
 
@@ -2239,12 +2251,14 @@ Util = {
     local curDb = Msg.getCurDb()
     local akeys = keys(curDb)
     local audioMode = false
+    myDebug('dumpMsg enter')
     
     chain(akeys).each(function (key)
         local value = curDb[key]
         local audioStr = '{ '
         if type(value) == 'table' then
           local text = value.text
+          local audio1 = value.audio
 
           if type(text) == 'table' then
             if #text >= 1 then
@@ -2257,7 +2271,7 @@ Util = {
                     end
                     audioStr = audioStr .. '\'' .. key1 .. '.ogg\', '
                     local msg1 = d.payload
-                    if not audioMode then
+                    if not audioMode and audio1 then
                       myDebug('msg1', 'complex|' .. key1 .. '|' .. msg1)
                     end
                 end)
@@ -2269,7 +2283,7 @@ Util = {
                       key1 = key .. '_' .. i
                     end
                     audioStr = audioStr .. '\'' .. key1 .. '.ogg\', '
-                    if not audioMode then
+                    if not audioMode and audio1 then
                       myDebug('msg1', 'array|' .. key1 .. '|' .. msg1)
                     end
                 end)
@@ -2280,7 +2294,7 @@ Util = {
             local msg1 = text
             local key1 = key
             audioStr = audioStr .. '\'' .. key1 .. '.ogg\', '
-            if not audioMode then
+            if not audioMode and audio1 then
               myDebug('msg1', 'text|' .. key1 .. '|' .. msg1)
             end
           end
@@ -2294,7 +2308,16 @@ Util = {
         end
     end)
   end,
-
+  
+  isKrGroup = function ()
+    local fnName = 'isKrGroup'
+    
+    if contains(Const.krGroup, postConfig.langCd) then
+      return true
+    end
+   
+    return false
+  end,
   
   --utilend
 }
@@ -2304,7 +2327,7 @@ Util = {
 function makeSpecialtyMsg()
   local fnName = 'makeSpecialtyMsg'
   
-  if postConfig.langCd ~= 'kr' then
+  if not Util.isKrGroup() then
     return let(
       {
         range(general.axisCnt)
@@ -2337,7 +2360,7 @@ function makeSpecialtyMsg()
             return ''
           end,
           function ()
-            return Msg.getText('msg_specialty_desc') .. content 
+          return Msg.getText('msg_specialty_header') .. content .. Msg.getText('msg_specialty_footer')
           end
         ).value()
       end
@@ -2376,7 +2399,7 @@ function makeSpecialtyMsg()
           return ''
         end,
         function ()
-          return content .. Msg.getText('msg_specialty_footer')
+          return Msg.getText('msg_specialty_header') .. content .. Msg.getText('msg_specialty_footer')
         end
       ).value()
     end
@@ -3115,11 +3138,11 @@ function moveAerialGroupByName(groupName, wp, opt)
     if isHeli == true then
       path[#path + 1] = mist.heli.buildWP(wp[1], wpType)
       path[#path + 1] = mist.heli.buildWP(wp[2], wpType)
-      path[#path + 1] = mist.heli.buildWP(zonePos, wpType)
+      --path[#path + 1] = mist.heli.buildWP(zonePos, wpType)
     else
       path[#path + 1] = mist.fixedWing.buildWP(wp[1], wpType, speed, altitude)
       path[#path + 1] = mist.fixedWing.buildWP(wp[2], wpType, speed, altitude)
-      path[#path + 1] = mist.fixedWing.buildWP(zonePos, wpType, speed, altitude)
+      --path[#path + 1] = mist.fixedWing.buildWP(zonePos, wpType, speed, altitude)
     end
     if TestFeature.aerialDestSmoke then
       makeSmoke(mist.utils.makeVec3GL(wp[1]), trigger.smokeColor.Blue)
@@ -3919,6 +3942,7 @@ function eHandler:onEvent(e)
     myDebug('S_EVENT_BDA')
     checkAttackerDestroyed(groupName, unitName)
     checkLunchDestroyed(groupName, unitName)
+    checkDefenderDestroyed(groupName)
 
   end
   if e.id == world.event.S_EVENT_KILL then
@@ -3972,11 +3996,98 @@ function eHandler:onEvent(e)
   end
 end
 
+local function makeStatusMsgAlt(axis, axisIndex, vzone, attackerLeft)
+  local res = ''
+  res = res .. '[' .. Util.getAxisName(axisIndex) .. '] '
+  
+  res = res .. Msg.getText('msg_step') .. Const.isSym
+  res = res .. axis.curStep .. Const.separatorSym
+  
+  local strState, dispCnt
+  if TestFeature.useLeftCnt == true then
+    dispCnt = vzone.defenderLeft
+  else
+    dispCnt = vzone.defenderLeftMax - vzone.defenderLeft
+  end
+
+  if axis.failed == true then
+    strState = Msg.getText('msg_st_failed')
+  else
+    strState = Util.getStateStr(axis.state)
+  end
+
+  res = res .. Msg.getText('msg_status') .. Const.isSym
+  res = res .. strState .. Const.separatorSym
+
+  res = res .. Msg.getText('msg_units') .. Const.isSym
+  res = res .. attackerLeft[axisIndex] .. Const.separatorSym
+
+  res = res .. Msg.getText('msg_destroyed') .. Const.isSym
+  res = res .. dispCnt
+
+  if postConfig.useSmoke == true then
+    local strSmoked = vzone.isSmoked and 'O' or 'X'
+    res = res .. Const.separatorSym .. Msg.getText('msg_smoked') .. Const.isSym
+    res = res .. strSmoked
+  end
+  
+  res = res .. '\n'
+
+  return res
+end
+
+local function makeStatusMsg(axis, axisIndex, vzone, attackerLeft)
+  local res = ''
+  res = res .. Util.getAxisName(axisIndex)
+  res = res .. ' [ ' .. axis.curStep
+  local strState, dispCnt
+  if TestFeature.useLeftCnt == true then
+    dispCnt = vzone.defenderLeft
+  else
+    dispCnt = vzone.defenderLeftMax - vzone.defenderLeft
+  end
+
+  if axis.failed == true then
+    strState = Msg.getText('msg_st_failed')
+  else
+    strState = Util.getStateStr(axis.state)
+  end
+  res = res .. ' / ' .. strState
+  res = res .. ' / ' .. attackerLeft[axisIndex] .. '-' .. dispCnt
+
+  if postConfig.useSmoke == true then
+    local strSmoked = vzone.isSmoked and 'O' or 'X'
+    res = res .. ' / ' .. strSmoked
+  end
+  
+  res = res .. ' ]'
+
+  if axisIndex ~= #general.axises then
+    res = res .. Const.separatorSym
+  end
+
+  return res
+end
+
 local function reportStatus()
   local fnName = 'reportStatus'
   
   local attackerLeft = Util.getAttackerLeft()
+
+  -- preliminary
+  local msgId = 'msg_reporting_status'
+
+  if general.isSuccess == true then
+    msgId = 'msg_operation_success'
+  end
+  if general.isFailed then
+    msgId = 'msg_operation_fail'
+  end
+  local msg = Msg.getText(msgId)
   
+  Util.notifyOP('msg_reporting_status', { period = Const.broadcastLong, altText = msg })
+  
+  -- detail
   local res = ''
   chain(general.axises).each(function (axis, axisIndex)
       rigid({
@@ -3985,40 +4096,12 @@ local function reportStatus()
                  rigid({
                      curZone[1]
                  }).stage(fnName, 'vzone null', function (vzone)
-                            res = res .. Util.getAxisName(axisIndex)
-                            res = res .. ' [ ' .. axis.curStep
-                            local strState, dispCnt
-                            if TestFeature.useLeftCnt == true then
-                              dispCnt = vzone.defenderLeft
-                            else
-                              dispCnt = vzone.defenderLeftMax - vzone.defenderLeft
-                            end
-
-                            if axis.failed == true then
-                              strState = Msg.getText('msg_st_failed')
-                            else
-                              strState = Util.getStateStr(axis.state)
-                            end
-                            res = res .. ' / ' .. strState
-                            res = res .. ' / ' .. attackerLeft[axisIndex] .. '-' .. dispCnt
-
-                            if postConfig.useSmoke == true then
-                              local strSmoked = vzone.isSmoked and 'O' or 'X'
-                              res = res .. ' / ' .. strSmoked
-                            end
-                            
-                            res = res .. ' ]'
-
-                            if axisIndex ~= #general.axises then
-                              res = res .. ', '
-                            end
+                            res = res .. makeStatusMsgAlt(axis, axisIndex, vzone, attackerLeft)
                  end)
       end)
       
   end)
 
-  local header = Msg.getText('msg_reporting_status')
-  Util.notifyOP('msg_reporting_status', { period = Const.broadcastLong })
   Util.broadcast(res, nil, Const.broadcastLong)
   
 end
@@ -4031,7 +4114,7 @@ local function showCardPicked()
                 if i == #general.cardPicked then
                   return res .. Util.getCardName(card)
                 else
-                  return res .. Util.getCardName(card) .. ', '
+                  return res .. Util.getCardName(card) .. Const.separatorSym
                 end
              end) 
     Util.broadcast(msg)
@@ -4057,6 +4140,47 @@ local function setConfigFromDifficulty()
     end
   end
   postConfig.axisCntSuccess = min(postConfig.axisCntSuccess, general.axisCnt)
+end
+
+local function makeGuideMsg(heading, range)
+  local fmt = Msg.getText('msg_guide_response')
+  local msg = string.format(fmt, heading, range)
+  return msg
+end
+
+local function guideAxis(params)
+  local fnName = 'guideAxis'
+  myDebug3(fnName, 'params', params)
+  rigid({
+      params.groupId,
+      params.groupName,
+      params.axisIndex,
+  }).stage(fnName, 'params invalid', function (groupId, groupName, axisIndex)
+             rigid({
+                 Util.getGroupPos(groupName, 1),
+                 Util.getCurVzoneForAxis(axisIndex),
+             }).stage(fnName, 'getting positions', function (groupPos, zoneInfo)
+                        let({
+                            zoneInfo[2]
+                        }, function (zonePos)
+                            let({
+                                mist.utils.getHeadingPoints(groupPos, zonePos),
+                                mist.utils.get2DDist(groupPos, zonePos),
+                            }, function (heading, dist)
+                                Util.notifyOP('msg_guide_response', {
+                                                altText = makeGuideMsg(
+                                                  math.floor(mist.utils.toDegree(heading)),
+                                                  math.floor(mist.utils.metersToNM(dist))
+                                                )
+                                })
+                                myDebug('heading', math.floor(mist.utils.toDegree(heading)))
+                                myDebug('dist', math.floor(mist.utils.metersToNM(dist)))
+                            end)
+                        end)
+             end)
+  end)
+
+  
 end
 
 local function onUserCommand(args)
@@ -4140,7 +4264,12 @@ local function onUserCommand(args)
       Msg.notifyC('msg_restart_requested', { audioOnly = true })
       if #trueVotes >= #clientIds then
         general.restartCnt = myConfig.const.periodRestart
-        local msg = general.restartCnt .. Msg.getText('msg_restart_announce')
+
+        local fmt = Msg.getText('msg_restart_announce')
+        local msg = string.format(fmt, general.restartCnt)
+        
+        --local msg = general.restartCnt .. Msg.getText('msg_restart_announce')
+
         Util.broadcast(msg) 
       else
       end
@@ -4152,11 +4281,14 @@ local function onUserCommand(args)
 
   elseif cmdId == 'REPORT_STATUS' then
     reportStatus()
-    
+
   elseif cmdId == 'TEST_MENU' then
     Util.broadcast('Done')
   elseif cmdId == 'TEST_MENU2' then
     Util.broadcast('Done2')
+  --testen2
+
+
   elseif cmdId == 'MOVE_ATTACKER' then
     if lc_args == 'total' then
       range(general.axisCnt)
@@ -4175,6 +4307,8 @@ local function onUserCommand(args)
     else
       stopAttackers(lc_args)
     end
+  elseif cmdId == 'GUIDANCE' then
+      guideAxis(lc_args) -- axisIndex, groupName
   elseif cmdId == 'REQUEST_SUPPORT' then
     if not Util.isSupportAlive(lc_args.eleIndex) then
       Util.notifyOP('msg_support_unable_finally')
@@ -4195,7 +4329,6 @@ end
 function test()
   myDebug('--- test start')
   local fnName = 'test'
-
   --testend
   myDebug('--- test end')
 end
@@ -4220,7 +4353,7 @@ end
 function showStatistics()
   local header1 = Msg.getText('msg_total_destroyed')
   local header2 = Msg.getText('msg_total_occupied')
-  local msg = header1 .. ' - ' .. general.totalDestroyed .. ', ' .. header2 .. ' - ' .. general.totalOccupied
+  local msg = header1 .. ' - ' .. general.totalDestroyed .. Const.separatorSym .. header2 .. ' - ' .. general.totalOccupied
   Util.broadcast(msg)
 end
 
@@ -4446,7 +4579,7 @@ function checkCardPick(axisIndex, vzoneIndex)
   local fnName = 'checkCardPick'
   myDebug3(fnName, 'axis/zone', { axisIndex = axisIndex, vzoneIndex = vzoneIndex })
   
-  if general.cardList ~= nil then
+  if general.cardList ~= nil and general.isDeckComplete == false then
     chain(general.cardList).doFind(
       function (card)
         return card.axisIndex == axisIndex and card.vzoneIndex == vzoneIndex
@@ -4460,7 +4593,8 @@ function checkCardPick(axisIndex, vzoneIndex)
         local msg = Msg.getText('msg_card_picked_header') .. '\'' .. cardName .. '\'' .. Msg.getText('msg_card_picked_footer')
         Util.broadcastBy(msg, Role.Axis, axisIndex, { msgId = 'msg_card_picked_header'})
 
-        if Util.isDeckComplete() then
+        if Util.checkDeckComplete() then
+          general.isDeckComplete = true
           Util.notifyOP('msg_card_deck_complete')
           showCardPicked()
         end
@@ -4858,7 +4992,6 @@ function preInit()
   Msg.setDefaultAudio('beep.wav')
   Msg.setForceDefaultAudio(true)
   Msg.setRollFn(getByRoll)
-  Msg.setSyncAudio(true)
   
   getConfig(myConfig, myConfigSet)
 
@@ -4933,14 +5066,14 @@ function buildMenuInit()
       if cmdId == 'CHANGE_OPT_LUNCHBOX'   and FixedOption.useLunchBox ~= nil then return end
       if cmdId == 'CHANGE_OPT_SMOKE'      and FixedOption.useSmoke ~= nil then return end
       
-      local title = Util.getOptionTitle(cmdId, ': ')
+      local title = Util.getOptionTitle(cmdId, Const.isSym)
       commandDb[#commandDb + 1] = { cmd = missionCommands.addCommand(title, nil, onUserCommand, { id = cmdId }) }
 
   end)
 
   if FixedOption.voiceSupport == nil then
     if contains(Const.voiceSupportLang, postConfig.langCd) then
-      local title = Util.getOptionTitle('CHANGE_OPT_VOICE', ': ')
+      local title = Util.getOptionTitle('CHANGE_OPT_VOICE', Const.isSym)
       local cmdId = 'CHANGE_OPT_VOICE'
       commandDb[#commandDb + 1] = { cmd = missionCommands.addCommand(title, nil, onUserCommand, { id = cmdId }) }
     end
@@ -4948,7 +5081,7 @@ function buildMenuInit()
 
   if FixedOption.langCd == nil then
     if #myConfig.langSupports > 1 then
-      local title = Util.getOptionTitle('CHANGE_OPT_LANG', ': ')
+      local title = Util.getOptionTitle('CHANGE_OPT_LANG', Const.isSym)
       commandDb[#commandDb + 1] = { cmd = missionCommands.addSubMenu(title) }
       appendSubMenuLang(commandDb[#commandDb].cmd)
     end
@@ -5012,6 +5145,36 @@ function appendSubMenuMove(subMenu)
         )
     end)
   missionCommands.addCommand(Msg.getText('msg_total'), subMenu, onUserCommand, { id = 'MOVE_ATTACKER', args = 'total' })
+
+end
+
+function appendSubMenuGuidance(subMenu)
+  local clientIds = Util.getClientIds()
+
+  chain(clientIds)
+    .each(function (clientId)
+        local groupId = clientId.id
+        local groupName = clientId.groupName
+
+        chain(general.axises)
+          .map(function (axis, axisIndex)
+              return { axis, axisIndex }
+          end)
+          .each(function (d)
+              let({
+                  Util.getAxisName(d[2])
+                  }, function (title)
+                  local lc_args = {
+                    axisIndex = d[2],
+                    groupId = groupId,
+                    groupName = groupName,
+                  }
+                  missionCommands.addCommandForGroup(groupId, title, subMenu, onUserCommand, { id = 'GUIDANCE', args = lc_args })
+                  myDebug('addCommandForGroup', lc_args)
+                  end
+              )
+          end)
+    end)
 
 end
 
@@ -5086,6 +5249,8 @@ function buildMenuMain()
   commandDb[#commandDb + 1] = { cmd = missionCommands.addSubMenu(Msg.getText('msg_request_support')) }
   appendSubMenuRequest(commandDb[#commandDb].cmd)
   commandDb[#commandDb + 1] = { cmd = missionCommands.addCommand(Msg.getText('msg_report_status'), nil, onUserCommand, { id = 'REPORT_STATUS' }) }
+  commandDb[#commandDb + 1] = { cmd = missionCommands.addSubMenu(Msg.getText('msg_guidance')) }
+  appendSubMenuGuidance(commandDb[#commandDb].cmd)
 
   if Const.useRestartMenu then
     local clientIds = Util.getClientIds()
@@ -5105,6 +5270,9 @@ function buildMenuMain()
     commandDb[#commandDb + 1] = { cmd = missionCommands.addCommand(Msg.getText('msg_test_menu'), nil, onUserCommand, { id = 'TEST_MENU', args = 1 }) }
     commandDb[#commandDb + 1] = { cmd = missionCommands.addCommand(Msg.getText('msg_test_menu') .. ' 2', nil, onUserCommand, { id = 'TEST_MENU2', args = 1 }) }
   end
+
+  --menuen
+  
 end
 
 
@@ -5430,8 +5598,3 @@ else
 end
 
 myDebug('--- script loading end')
-
-
-
--- next: 
---

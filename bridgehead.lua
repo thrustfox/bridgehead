@@ -33,8 +33,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 AppInfo = {
   appName = 'bridgehead',
-  ver = '1.02.001',
-  verDate = '23/12/06',
+  ver = '1.03.001',
+  verDate = '24/02/03',
   authorName = 'thrustfox',
   logHeader = 'BRIDGEHEAD_LOG'
 }
@@ -304,8 +304,8 @@ ConfigSet = {
       axisBias = ({45, 315})[1],
       minDistPath = ({2.5, 2.5})[2],
       maxDistPath = ({3.5, 2.8})[2],
-      minDistEntry = ({2.0, 2.1})[2],
-      maxDistEntry = ({2.2, 2.3})[2],
+      minDistEntry = ({2.0, 2.5})[2],
+      maxDistEntry = ({2.2, 2.6})[2],
       minRadiusAxis = 0.55,
       maxRadiusAxis = 0.83,
       radiusEntry = 0.35,
@@ -399,8 +399,8 @@ postConfig = {
   useStepLimit = true,
   useLunchBox = true,
   useSmoke = true,
-  curDifficulty = 'normal',
-  langCd = 'en',
+  curDifficulty = ({'normal', 'easy', 'hard'})[1],
+  langCd = ({'en', 'kr'})[1],
   voiceSupport = false,
   
   useHardMode = false,
@@ -1148,8 +1148,9 @@ Util = {
         }).stage(fnName, 'zone null', function (zone)
                    return rigid({
                        Util.getZonePosition(zone),
-                       zone.radius})
-                     .stage(fnName, 'zone info null', function (pos, radius)
+                       zone.radius,
+                       true
+                   }).stage(fnName, 'zone info null', function (pos, radius)
                               if #posGen >= bigZoneCnt then
                                 return
                               end
@@ -2020,8 +2021,10 @@ Util = {
 
     return rigid({general.axises[axisIndex]})
       .stage(fnName, 'axis null', function (axis)
-               return rigid({axis.alertRadiuses, axis.curStep})
-                 .stage(fnName, 'axis info null', function (alertRadiuses, curStep)
+               return rigid({
+                   axis.alertRadiuses, axis.curStep,
+                   true
+               }).stage(fnName, 'axis info null', function (alertRadiuses, curStep)
                           return alertRadiuses[curStep]
                        end).value()
       end).value()
@@ -2032,8 +2035,10 @@ Util = {
 
     return rigid({general.axises[axisIndex]})
       .stage(fnName, 'axis null', function (axis)
-               return rigid({axis.vzones, axis.curStep})
-                 .stage(fnName, 'axis info null', function (vzones, curStep)
+               return rigid({
+                   axis.vzones, axis.curStep,
+                   true
+               }).stage(fnName, 'axis info null', function (vzones, curStep)
                           return vzones[curStep]
                        end).value()
             end)
@@ -2134,7 +2139,8 @@ Util = {
     local fnName = 'getCardName'
     return rigid({
         card.cardShape,
-        card.cardNum
+        card.cardNum,
+        true
     }).stage(fnName, 'shape, num', function (cardShape, cardNum)
                return branch({}, cardShape <= #myConfig.const.cardShapes,
                  function ()
@@ -2464,7 +2470,8 @@ function doRoll(roll, desc)
   if type(roll) == 'table' then
     return rigid({
         roll[1],
-        roll[2]
+        roll[2],
+        true
     }).stage(fnName, 'wrong roll table', function (rollNum, multi)
                if rollNum < multi and Const.useRollProportional ~= true then
                  rollNum = multi
@@ -2760,7 +2767,8 @@ function generate2PointsAroundZone(zoneName, offset, threshold) -- not used curr
         function (zone)
           return rigid({
               Util.getZonePosition(zone),
-              mist.getRandomPointInZone(zoneName)
+              mist.getRandomPointInZone(zoneName),
+              true
           }).stage(fnName, 'zonePos null',
                    function (zonePos, pos2)
                      return { pos2, mist.getRandPointInCircle(pos2, offset + threshold, offset) }
@@ -2890,7 +2898,9 @@ function setRouteAerial(groupName, info, opt)
 
   rigid({
       {info, 'wp'},
-      {info, 'wpIndex'}}).shift(fnName, 'wp info not found',
+      {info, 'wpIndex'},
+      true
+  }).shift(fnName, 'wp info not found',
         function (wp, wpIndex)
           rigid({wp}).condition(fnName, 'wpIndex overflow', wpIndex <= #wp, function (curWp)
             if wpIndex == #curWp then
@@ -3187,8 +3197,11 @@ function moveAttackers(axisIndex, noRebuild)
 
   rigid({general.axises[axisIndex]})
     .stage(fnName, 'axis null', function (axis)
-             return rigid({axis.vzones, axis.curStep})
-               .stage(fnName, 'axis info null', function (vzones, curStep)
+             return rigid({
+                 axis.vzones,
+                 axis.curStep,
+                 true
+             }).stage(fnName, 'axis info null', function (vzones, curStep)
                         return vzones[curStep]
                      end).value()
           end)
@@ -3322,10 +3335,12 @@ function checkRoeArea_client(listRoeArea)
         rigid({
             Util.getCurVzoneForAxis(axisIndex),
             Util.getCurAlertRadiusForAxis(axisIndex),
+            true
         }).stage(fnName, 'vzone info null', function (zoneInfo, alertRadius)
                    rigid({
                        zoneInfo[2],
                        zoneInfo[1].radius,
+                       true
                    }).stage(fnName, 'vzone info null 2', function (zonePos, zoneRadius)
                               local alertRadiusSlow = alertRadius * myConfig.const.alertRadiusRatioMax
                               local alertRadiusHeli = alertRadius * myConfig.const.alertRadiusRatioMin
@@ -3831,6 +3846,7 @@ local function notifyPatrolDestroyed(initiatorUnitName)
     indexing.unitToGroup[initiatorUnitName],
     Util.getSupportNames(),
     Util.getAttackerNames(),
+    true
   }).stage(fnName, 'groupName not found', function (groupName, allSupportNames, allAttackerNames)
              
              if contains(allSupportNames, groupName) then
@@ -3922,9 +3938,14 @@ function eHandler:onEvent(e)
                groupName = indexing.unitToGroup[unitName]
     end)
 
-    myDebug('S_EVENT_UNIT_LOST')
-    checkPatrolDestroyed(groupName, unitName)
-    checkSupportDestroyed(groupName, unitName)
+    myDebug('S_EVENT_UNIT_LOST', unitName)
+
+    if groupName == nil then
+      myDebug('group not found')
+    else
+      checkPatrolDestroyed(groupName, unitName)
+      checkSupportDestroyed(groupName, unitName)
+    end
     
   end
   if e.id == world.event.S_EVENT_BDA then
@@ -3949,29 +3970,32 @@ function eHandler:onEvent(e)
     if TestFeature.msgEvent then
       Util.broadcast('S_EVENT_KILL')
     end
-    myDebug('S_EVENT_KILL', e)
     local unitName, groupName
     rigid({
-        e.target
-    }).stage(fnName, 'S_EVENT_KILL target null', function (target)
-               unitName = target:getName()
-               groupName = indexing.unitToGroup[unitName]
+        e.target,
+        e.initiator,
+        true
+    }).stage(fnName, 'S_EVENT_KILL target null', function (target, initiator)
+        unitName = target:getName()
+        groupName = indexing.unitToGroup[unitName]
+
+        myDebug('S_EVENT_KILL', unitName)
+        
+        if groupName == nil then
+          myDebug('group not found')
+        else
+          checkPatrolDestroyed(groupName, unitName)
+          checkSupportDestroyed(groupName, unitName, false)
+        end
+        
+        local patrolUnitNames = chain(indexing.patrolUnitToIndex).map(function (d) return d.unitName end).value()
+        if contains(patrolUnitNames, unitName) then
+          local initiatorName
+          initiatorName = initiator:getName()
+          notifyPatrolDestroyed(initiatorName)
+        end
+
     end)
-    myDebug('S_EVENT_KILL', unitName)
-
-    checkPatrolDestroyed(groupName, unitName)
-    checkSupportDestroyed(groupName, unitName, false)
-
-    local patrolUnitNames = chain(indexing.patrolUnitToIndex).map(function (d) return d.unitName end).value()
-    if contains(patrolUnitNames, unitName) then
-      local initiatorName
-      rigid({
-          e.initiator
-      }).stage(fnName, 'initiator null', function (initiator)
-                 initiatorName = initiator:getName()
-      end)
-      notifyPatrolDestroyed(initiatorName)
-    end
     
   end
   if e.id == world.event.S_EVENT_DEAD then
@@ -4155,10 +4179,12 @@ local function guideAxis(params)
       params.groupId,
       params.groupName,
       params.axisIndex,
+      true
   }).stage(fnName, 'params invalid', function (groupId, groupName, axisIndex)
              rigid({
                  Util.getGroupPos(groupName, 1),
                  Util.getCurVzoneForAxis(axisIndex),
+                 true
              }).stage(fnName, 'getting positions', function (groupPos, zoneInfo)
                         let({
                             zoneInfo[2]
@@ -4502,6 +4528,7 @@ function processAxis()
                           rigid({
                               curZone[1],
                               curZone[3],
+                              true
                           }).stage(fnName, 'vzone null', function (zone, zoneName)
                
                                      if zone.defenderLeft <= 0 then
@@ -4539,6 +4566,7 @@ function processAxis()
                       rigid({
                           curZone[1],
                           curZone[3],
+                          true
                       }).stage(fnName, 'vzone null', function (zone, zoneName)
                                  if Util.isAttackerLeft(axisIndex) == false then
                                    myDebug3(fnName, 'garrison - isAttackerLeft false')
@@ -4667,6 +4695,7 @@ function checkArrivalPatrol(isFriendly, fnName)
                  { patrol, 'wp' },
                  { patrol, 'wpIndex' },
                  { patrol, 'wpIndex' },
+                 true
              }).shift(fnName, 'patrol info not found', function (wp, wpIndex, oldWpIndex)
                rigid({
                    { wp, wpIndex }
@@ -5426,6 +5455,7 @@ function generateCardList()
                    return rigid({
                        context.anv,
                        context.cards,
+                       true
                    }).stage(fnName, 'generate selected anv, cards', function (anv, cards)
                               return let({
                                   Util.randomMulti(#anv, myConfig.const.cardNumMax),
@@ -5446,6 +5476,7 @@ function generateCardList()
                    return rigid({
                        context.anv,
                        context.cards,
+                       true
                    }).stage(fnName, 'merging selected anv, cards', function (anv, cards)
                               return range(myConfig.const.cardNumMax).map(function (i)
                                   return {

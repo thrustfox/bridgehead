@@ -46,7 +46,7 @@ Msg = {
   init = function (logObj, data)
     Msg.data = data
     Msg.logObj = logObj
-    Msg.log('Msg - init success')
+    --Msg.log('Msg - init success')
   end,
   getCurDb = function ()
     if Msg.data ~= nil then
